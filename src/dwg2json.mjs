@@ -11,14 +11,17 @@
  */
 import { LibreDwg, Dwg_Error } from "@mlightcad/libredwg-web";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
+/* ⚠️ 实体映射搬进 `ent.mjs` 了（0.1.1）：那一段是这个转换器里**唯一有分支的地方**，
+   而它的毛病只在真图上露脸（`POLYLINE2D`、`ATTRIB` 的嵌套 text、整个缺掉的 `ELLIPSE`）。
+   搬出去之后契约自测能用**自拟数据**喂它，一份 dwg 都不用。
+   ⚠️ 这一行是相对 import，`build.mjs` 把两个文件拷到同一层，所以产物里不用改写它。 */
+import { ent, num, xy } from "./ent.mjs";
 
 const a = process.argv.slice(2);
-if (a.includes("--version")) { console.log("umbra-dwg2json 0.1 (libredwg-web 0.8, GPL-3.0)"); process.exit(0); }
+if (a.includes("--version")) { console.log("umbra-dwg2json 0.1.1 (libredwg-web 0.8.3, GPL-3.0)"); process.exit(0); }
 const inAt = a.indexOf("--in"), outAt = a.indexOf("--out");
 if (inAt < 0 || outAt < 0) { console.error("用法：--in <x.dwg> --out <y.json>"); process.exit(2); }
 
-const num = (v) => (typeof v === "bigint" ? Number(v) : typeof v === "number" ? v : 0);
-const xy = (p) => (p ? [num(p.x), num(p.y)] : null);
 const warnings = [];
 
 /* ── 读文件时的错误码：**自己读，自己分档** ──
@@ -87,45 +90,6 @@ if (code > 0) {
 }
 const ver = dwg.dwg_get_version_type(ptr), cp = dwg.dwg_get_codepage(ptr);
 const { database: db, stats } = dwg.convertEx(ptr);
-
-/** 一条实体 → `RawEnt`；认不出来回 null（计进 unknown）。 */
-function ent(e) {
-  const l = String(e.layer ?? "0");
-  switch (e.type) {
-    case "LINE": { const p = xy(e.startPoint), q = xy(e.endPoint); return p && q ? { t: "LINE", l, a: p, b: q } : null; }
-    /* ⚠️ **`POLYLINE2D` 是真实的类型名**，不是 `POLYLINE` —— 第一版按后者写，
-       52 条旧式多段线被静默扔进 unknown。`unknown` 是个数字，**没人会去看它由哪些类型组成**。 */
-    case "LWPOLYLINE": case "POLYLINE": case "POLYLINE2D": {
-      const v = (e.vertices ?? []).map(xy).filter(Boolean);
-      return v.length >= 2 ? { t: "LWPOLYLINE", l, v, ...(e.closed || (num(e.flag) & 1) ? { closed: true } : {}) } : null;
-    }
-    case "ARC": { const c = xy(e.center); return c ? { t: "ARC", l, c, r: num(e.radius), a0: num(e.startAngle), a1: num(e.endAngle) } : null; }
-    case "CIRCLE": { const c = xy(e.center); return c ? { t: "CIRCLE", l, c, r: num(e.radius) } : null; }
-    /* ⚠️ `ATTRIB` / `ATTDEF` 是**块属性里的文字** —— 图框标题栏的图名经常是这个而不是 TEXT。
-       当成文字收进来，不然「这张图叫什么」在某些图纸上永远取不到。 */
-    case "TEXT": case "MTEXT": case "ATTRIB": case "ATTDEF": {
-      const p = xy(e.startPoint ?? e.insertionPoint ?? e.position ?? (e.text && typeof e.text === "object" ? e.text.startPoint : null));
-      /* ⚠️ MTEXT 带格式码（`\pxq...;` `{\fSimSun|b0;...}`）。不剥的话房间名会变成一串控制字符，
-         而**它看起来仍然像一个房间名**（前面几个汉字是对的），后面的识别全错。 */
-      /* ⚠️ `ATTRIB` 的 `text` 是一个**嵌套对象** `{text, startPoint, textHeight, …}`，不是字符串。
-         `String(对象)` 会得到 `[object Object]` —— 一个**看起来有内容**的假文字。 */
-      const inner = e.text && typeof e.text === "object" ? e.text : null;
-      let s = String((inner ? inner.text : e.text) ?? e.value ?? "");
-      if (e.type === "MTEXT") s = s.replace(/\\[A-Za-z][^;\\]*;/g, "").replace(/[{}]/g, "").replace(/\\P/g, " ").replace(/\\~/g, " ");
-      s = s.trim();
-      return p && s ? { t: "TEXT", l, p, h: num(e.textHeight ?? e.height) || 200, s, ...(e.rotation ? { rot: num(e.rotation) } : {}) } : null;
-    }
-    case "INSERT": {
-      const p = xy(e.insertionPoint ?? e.position);
-      if (!p || !e.name) return null;
-      const sx = num(e.xScale ?? e.scale?.x ?? 1) || 1, sy = num(e.yScale ?? e.scale?.y ?? 1) || 1;
-      return { t: "INSERT", l, n: String(e.name), p,
-        ...(sx !== 1 || sy !== 1 ? { s: [sx, sy] } : {}),
-        ...(e.rotation ? { rot: num(e.rotation) } : {}) };
-    }
-    default: return null;
-  }
-}
 
 let unknown = 0;
 /** ⚠️ **`unknown` 是一个数字，没人会去看它由哪些类型组成。**

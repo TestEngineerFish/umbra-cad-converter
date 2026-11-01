@@ -31,6 +31,15 @@ const src = readFileSync(join(ROOT, "src", "dwg2json.mjs"), "utf8");
 const patched = src.replace('from "@mlightcad/libredwg-web"', 'from "./vendor/libredwg-web/lib/index.js"');
 if (patched === src) { console.error("✗ 没找到要改写的 import —— 源码动过了，build 要跟着改"); process.exit(1); }
 writeFileSync(join(PKG, "dwg2json.mjs"), patched, { mode: 0o755 });
+/* ⚠️⚠️ **`ent.mjs` 要跟着进产物**（0.1.1 起）：它是 `dwg2json.mjs` 的相对 import。
+   漏了的话**开发模式一切正常**（src/ 下两个文件挨着），而产物里是
+   `Cannot find module './ent.mjs'` —— 一个只在用户那台机器上出现的失败。
+   > 这正是 Studio 那边 `shared/` 漏进 `extraResources` 那一族（`00` §63.1）。
+   下面那条「源码里 import 的每个相对文件都在产物里」把它钉住，而不是靠这一行被记得。 */
+for (const rel of [...patched.matchAll(/from "\.\/([A-Za-z0-9_.-]+\.mjs)"/g)].map((m) => m[1])) {
+  if (!existsSync(join(ROOT, "src", rel))) { console.error(`✗ 源码 import 了 ./${rel}，而 src/ 下没有它`); process.exit(1); }
+  cpSync(join(ROOT, "src", rel), join(PKG, rel));
+}
 
 /* ② vendor：只拷运行时真要的。
       ⚠️ `lib/libredwg.js` 用 `import '../wasm/libredwg-web.js'`，而那个 loader
