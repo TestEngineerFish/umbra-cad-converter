@@ -1,0 +1,15 @@
+name: ci
+on: [push, pull_request]
+jobs:
+  selftest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '20' }
+      - run: npm ci
+      # ⚠️ 顺序不能换：build 在前，selftest 的第二节才有产物可测。
+      # 没有产物时它会说「整块跳过」并且**明说跳过不算通过** —— 那一节正是
+      # 「源码跑得好好的，而发出去那一份一启动就炸」的唯一一道闸。
+      - run: npm run build
+      - run: npm run selftest
