@@ -1,6 +1,6 @@
 # umbra-cad-converter
 
-把 **dwg 读成 JSON** 的一个小程序。给[长尾雀 Studio](https://github.com/TestEngineerFish/umbra-studio)
+把 **dwg 读成 JSON** 的一个小程序。给长尾雀 Studio
 的 CAD 链路当**可选组件**用：Studio 自己不带它，要看 dwg 的时候按需下载。
 
 **许可：GPL-3.0-or-later**（`LICENSE`）。为什么是 GPL 见 `NOTICE.md`。
