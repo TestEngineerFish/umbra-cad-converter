@@ -153,6 +153,13 @@ npm run selftest
 1. 改 `package.json` 的 `version`
 2. `npm ci && npm run selftest && npm run build`
 3. 把 `dist/dwg2json-<版本>.tar.gz` 和 `.sha256` 传成 tag `v<版本>` 的 Release 资产
+3.5 **把 `libredwg-web-0.8.3-source.tar.gz` 一起传上去** —— 这是 GPL-3.0 第 6 条的
+   「对应源码」义务（`NOTICE.md` 里写着「每个 Release 都附一份」）。
+   wasm 没换版本时它和上一版是同一个文件，所以从上一版的 Release 拿过来就行：
+   `gh release download v<上一版> -p 'libredwg-web-0.8.3-source.tar.gz' -D dist/`
+   ⚠️⚠️ **这一步 2026-11-03 才写进这张清单** —— 在那之前它只写在 `NOTICE.md` 里。
+   > **一条只写在「我们承诺了什么」那一页、而不在「发版要做什么」这张清单上的义务，
+   > 会在某一版被漏掉** —— 而漏掉的后果是一次不合规的分发，不是一条红判据。
 4. **把那个 sha256 写进 Studio 的 `server/src/cad/install.ts`** ——
    Studio 的校验值写死在代码里，**不从网络上读**。漏了这一步的症状是
    「下载完说校验不过」，而不是「装上了一个不对的东西」。
