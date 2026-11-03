@@ -1,6 +1,6 @@
 {
   "name": "umbra-cad-converter",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "dwg → JSON，给长尾雀 Studio 用的可选转换组件。独立进程，只经命令行与文件通信。",
   "license": "GPL-3.0-or-later",
   "type": "module",

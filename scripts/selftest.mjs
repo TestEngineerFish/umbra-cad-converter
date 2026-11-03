@@ -129,6 +129,44 @@ console.log("\n③ 实体映射（自拟数据，不用 dwg）");
      "**空的 MTEXT 照样吐**（空文字框是真的；报成 unknown 会让用户以为图读坏了）");
   ok(ent({ type: "MTEXT", textHeight: 100, text: "x" }) === null, "没有插入点的 MTEXT 才回 null");
 
+  /* ── DIMENSION（0.1.2）────────────────────────────────────────────── */
+  const P = (x, y) => ({ x, y, z: 0 });
+  /* ⚠️⚠️ 这一条是整组里最要紧的：**两个数都要在，而且不许在这里合**。
+     `m` 是 CAD 按几何算的，`s` 是人手填的覆盖值 —— 「以标注数字为准」这件事
+     的全部意义就在两者可以不一样（线画到 2775、标注写 2770）。
+     在这里取一个「最终值」等于把那个差抹掉，而那个差正是要报给用户的 `dim_conflicts`。 */
+  const dim = ent({ type: "DIMENSION", layer: "DIM-外道", dimensionType: 32,
+    definitionPoint: P(0, -500), subDefinitionPoint1: P(0, 0), subDefinitionPoint2: P(2775, 0),
+    measurement: 2775, text: "2770" });
+  ok(dim && dim.t === "DIMENSION" && dim.m === 2775 && dim.s === "2770",
+     "**线性标注：`m`（CAD 算的）和 `s`（人写的）两个数都吐，不合**", JSON.stringify(dim));
+  ok(dim && dim.a[0] === 0 && dim.b[0] === 2775 && dim.d[1] === -500 && dim.k === "rot",
+     "两个定义点 + 标注线位置 + 类型都在（全取 WCS，**不碰 OCS 的 `textPoint`**）", JSON.stringify(dim));
+  /* ⚠️⚠️ **类型要按低三位判**：32 / 64 / 128 是位标志加在整数值上的，
+     而 32 在 R13 之后**永远是 1**。直接 `=== 0` 会把每一条标注都判成「不是线性的」—— 
+     症状是「这张图一条标注都没读到」，而那和「这张图没有标注」长得一模一样。 */
+  ok(dim !== null, "**`dimensionType` 带着 32 位标志也要认**（R13 之后它永远是 1）",
+     `dimensionType=32 → ${dim ? dim.k : "null"}`);
+  const aln = ent({ type: "DIMENSION", layer: "DIM", dimensionType: 33,
+    definitionPoint: P(0, -1), subDefinitionPoint1: P(0, 0), subDefinitionPoint2: P(1000, 0), measurement: 1000 });
+  ok(aln && aln.k === "aln" && aln.m === 1000 && aln.s === undefined,
+     "对齐标注认得出来；**没有覆盖文字时不编一个 `s` 出来**", JSON.stringify(aln));
+  /* ⚠️ `text` 是三态（`null` / `""` / `"<>"` 用 measurement · 一个空格 = 抑制 · 其它 = 画出来的），
+     所以**原样吐、不 trim** —— 判这三态是 Studio 的事。
+     这里钉的是「一个空格活着到了另一边」：trim 一下它就变成空串，而空串是另一档。 */
+  const sup = ent({ type: "DIMENSION", layer: "DIM", dimensionType: 32,
+    definitionPoint: P(0, -1), subDefinitionPoint1: P(0, 0), subDefinitionPoint2: P(50, 0), measurement: 50, text: " " });
+  ok(sup && sup.s === " ", "**「一个空格」原样活着到另一边**（它的意思是「文字被抑制」，trim 掉就变成另一档）",
+     JSON.stringify(sup.s));
+  /* 这一轮刻意不要的那几种 —— 回 null 进 skipped，而宿主本来就把 DIMENSION 算在「建模不需要」里 */
+  for (const [dt, name] of [[34, "角度"], [35, "直径"], [36, "半径"], [37, "三点角度"], [38, "坐标"]]) {
+    ok(ent({ type: "DIMENSION", layer: "DIM", dimensionType: dt,
+      definitionPoint: P(0, 0), subDefinitionPoint1: P(0, 0), subDefinitionPoint2: P(1, 1) }) === null,
+      `${name}标注这一轮不要（回 null，计进 skipped）`);
+  }
+  ok(ent({ type: "DIMENSION", layer: "DIM", dimensionType: 32, definitionPoint: P(0, 0) }) === null,
+     "缺定义点的标注回 null（不吐半条）");
+
   /* 老那几支不许被这一轮带坏 */
   const at = ent({ type: "ATTRIB", layer: "图框", text: { text: "一层平面布置图", startPoint: { x: 5, y: 6 }, textHeight: 250 } });
   ok(at && at.t === "TEXT" && at.s === "一层平面布置图" && at.p[0] === 5 && at.h === 250,

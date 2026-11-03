@@ -91,6 +91,44 @@ export function ent(e) {
         ...(dir && (dir[0] !== 0 || dir[1] !== 0) ? { dir } : {}),
         ...(num(e.rectWidth) > 0 ? { w: num(e.rectWidth) } : {}) };
     }
+    /* ⚠️⚠️ **DIMENSION 0.1.2 才有，而且只认线性那两种**（Rotated / Aligned，口径 geek-99 2026-11-03）。
+       它是 CAD 精度的全部依据：`doc/27` 的那句「以标注数字为准」没有它就是一句空话 ——
+       实测一张真图上 **1765 条 DIMENSION 全进 skipped**，于是 check.mjs 的逐刻度对账没有来源。
+
+       ⚠️⚠️ **两个数都要吐，而且不许在这里合**：
+       · `m` = `measurement`，**CAD 自己按几何算的**；
+       · `s` = `text`，**人手填的覆盖值**（图上真正画出来的那个数）。
+       「以标注数字为准」这件事的全部意义就在两者**可以不一样**
+       （量房图上常见：先量好数字再画图，线画到 2775 而标注写 2770）。
+       在这里取一个「最终值」等于把那个差抹掉，而那个差正是 `dim_conflicts` 要报给用户的东西。
+       > **一个格式的价值在于它保留了两个数不一样这件事；合并它们是在这一步丢掉信息。**
+
+       ⚠️ `text` 的语义是**三态**，所以原样吐、不 trim、不解释（同 MTEXT 那一条）：
+       `null` / `""` / `"<>"` = 用 measurement · `" "`（一个空格）= 文字被抑制 · 其它 = 画出来的就是它。
+       只有**真的有字符串**时才带 `s` 出去；判这三态是 Studio 的事。
+
+       ⚠️ 取点一律取 **WCS** 的那几个（`subDefinitionPoint1/2` 和 `definitionPoint`），
+       **不碰 `textPoint`** —— 它是 OCS 的，换算要挤出方向，而我们不需要它：
+       「这道标注量的是哪两点」和「标注线画在哪」已经够 Studio 把刻度对到墙面上。
+       > **不取用不到的那个坐标，就不用去处理它所在的那个坐标系。**
+
+       字段名取自 libredwg-web 0.8.3 自己的 `DwgAlignedDimensionEntity`。
+       类型用低三位判（`dimensionType & 7`）：32 / 64 / 128 是**位标志**加在整数值上的，
+       直接比 `=== 0` 会把 R13 之后**每一条**标注都判成「不是线性的」。 */
+    case "DIMENSION": {
+      const a = xy(e.subDefinitionPoint1), b = xy(e.subDefinitionPoint2), d = xy(e.definitionPoint);
+      if (!a || !b || !d) return null;
+      const dt = num(e.dimensionType) & 7;
+      /* 0 = Rotated（水平 / 竖直 / 转角）· 1 = Aligned。
+         角度 / 半径 / 直径 / 坐标标注这一轮不要 —— 回 null 进 `skipped.DIMENSION`，
+         而宿主本来就把 DIMENSION 算在「建模不需要」那一类里，所以不会多一句吓人的话。 */
+      if (dt > 1) return null;
+      const s = typeof e.text === "string" ? e.text : null;
+      return { t: "DIMENSION", l, a, b, d, k: dt === 1 ? "aln" : "rot",
+        ...(Number.isFinite(e.measurement) ? { m: num(e.measurement) } : {}),
+        ...(s !== null ? { s } : {}),
+        ...(e.rotationAngle ? { rot: num(e.rotationAngle) } : {}) };
+    }
     case "INSERT": {
       const p = xy(e.insertionPoint ?? e.position);
       if (!p || !e.name) return null;
